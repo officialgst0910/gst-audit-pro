@@ -1,0 +1,186 @@
+# ============================================================
+# GST Audit Pro — Docker Compose (Production-ready)
+# ============================================================
+
+version: "3.9"
+
+services:
+
+  # ── PostgreSQL ─────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: gst_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       gstauditpro
+      POSTGRES_USER:     gstaudit
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-StrongPass@123}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gstaudit -d gstauditpro"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - gst_network
+
+  # ── Redis ─────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: gst_redis
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD:-RedisPass@123} --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - gst_network
+
+  # ── FastAPI Backend ────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: gst_backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL:          postgresql+asyncpg://gstaudit:${DB_PASSWORD:-StrongPass@123}@postgres:5432/gstauditpro
+      REDIS_URL:             redis://:${REDIS_PASSWORD:-RedisPass@123}@redis:6379/0
+      SECRET_KEY:            ${SECRET_KEY:-change-me-in-production-min-32-chars-long}
+      ANTHROPIC_API_KEY:     ${ANTHROPIC_API_KEY}
+      AWS_ACCESS_KEY_ID:     ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_BUCKET_NAME:       ${AWS_BUCKET_NAME:-gst-audit-pro-files}
+      AWS_REGION:            ${AWS_REGION:-ap-south-1}
+      DEBUG:                 "false"
+      ALLOWED_ORIGINS:       '["http://localhost:3000","https://app.gstauditpro.in"]'
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - upload_tmp:/app/tmp
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - gst_network
+
+  # ── Celery Worker (Reconciliation Jobs) ───────────────────
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: gst_celery
+    restart: unless-stopped
+    command: celery -A app.worker worker --loglevel=info --concurrency=4 -Q reconciliation,reports,ai
+    environment:
+      DATABASE_URL:      postgresql+asyncpg://gstaudit:${DB_PASSWORD:-StrongPass@123}@postgres:5432/gstauditpro
+      REDIS_URL:         redis://:${REDIS_PASSWORD:-RedisPass@123}@redis:6379/0
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+    depends_on:
+      - backend
+      - redis
+    volumes:
+      - ./backend:/app
+    networks:
+      - gst_network
+
+  # ── Celery Beat (Scheduled Tasks) ─────────────────────────
+  celery_beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: gst_celery_beat
+    restart: unless-stopped
+    command: celery -A app.worker beat --loglevel=info
+    environment:
+      DATABASE_URL: postgresql+asyncpg://gstaudit:${DB_PASSWORD:-StrongPass@123}@postgres:5432/gstauditpro
+      REDIS_URL:    redis://:${REDIS_PASSWORD:-RedisPass@123}@redis:6379/0
+    depends_on:
+      - redis
+    networks:
+      - gst_network
+
+  # ── Next.js Frontend ───────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    container_name: gst_frontend
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      NEXT_PUBLIC_APP_NAME: "GST Audit Pro"
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - gst_network
+
+  # ── Nginx Reverse Proxy ────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: gst_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - nginx_logs:/var/log/nginx
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - gst_network
+
+  # ── MinIO (S3-compatible, for local dev) ──────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: gst_minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER:     ${MINIO_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_PASS:-minioadmin123}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    profiles:
+      - local
+    networks:
+      - gst_network
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  upload_tmp:
+  nginx_logs:
+
+networks:
+  gst_network:
+    driver: bridge

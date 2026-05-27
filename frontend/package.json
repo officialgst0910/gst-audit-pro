@@ -1,0 +1,65 @@
+{
+  "name": "gst-audit-pro-frontend",
+  "version": "2.4.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbo",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "next": "15.0.3",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "typescript": "5.6.3",
+
+    "@radix-ui/react-dialog": "^1.1.1",
+    "@radix-ui/react-dropdown-menu": "^2.1.1",
+    "@radix-ui/react-select": "^2.1.1",
+    "@radix-ui/react-tabs": "^1.1.0",
+    "@radix-ui/react-tooltip": "^1.1.2",
+    "@radix-ui/react-badge": "^1.0.0",
+    "@radix-ui/react-progress": "^1.1.0",
+    "@radix-ui/react-separator": "^1.1.0",
+    "@radix-ui/react-avatar": "^1.1.0",
+    "@radix-ui/react-switch": "^1.1.0",
+
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^2.5.2",
+    "lucide-react": "^0.447.0",
+    "@tabler/icons-react": "^3.18.0",
+
+    "recharts": "^2.13.0",
+    "chart.js": "^4.4.4",
+    "react-chartjs-2": "^5.2.0",
+
+    "axios": "^1.7.7",
+    "swr": "^2.2.5",
+    "zustand": "^5.0.0",
+    "react-hook-form": "^7.53.0",
+    "zod": "^3.23.8",
+    "@hookform/resolvers": "^3.9.0",
+
+    "react-dropzone": "^14.2.9",
+    "react-hot-toast": "^2.4.1",
+    "date-fns": "^4.1.0",
+    "numeral": "^2.0.6",
+
+    "tailwindcss": "^3.4.14",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.47",
+    "@tailwindcss/typography": "^0.5.15",
+    "@tailwindcss/forms": "^0.5.9"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.5",
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.1",
+    "@types/numeral": "^2.0.5",
+    "eslint": "^9.12.0",
+    "eslint-config-next": "15.0.3"
+  }
+}
